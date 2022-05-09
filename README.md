@@ -1,0 +1,2 @@
+# BirdVAE
+Generating new birbs
