@@ -13,7 +13,7 @@ class CNN_Encoder(nn.Module):
     def __init__(self, input_shape, output_size):
         super(CNN_Encoder, self).__init__()
 
-        self.input_shape = input_shape
+        self.input_shape = input_shape # (3, 240, 240)
         self.channel_mult = 16
 
         #convolutions
@@ -53,10 +53,10 @@ class CNN_Encoder(nn.Module):
     def forward(self, x):
         x = self.conv(x.view(-1, *self.input_shape))
         x = x.view(-1, self.flat_fts)
-        return self.linear(x)
+        return self.linear(x) # embedding size = 784
 
 class CNN_Decoder(nn.Module):
-    def __init__(self, embedding_size, output_shape=(1, 28, 28)):
+    def __init__(self, embedding_size, output_shape):
         super(CNN_Decoder, self).__init__()
         self.output_channels, self.output_height, self.output_width = output_shape
         self.input_size = embedding_size
@@ -72,28 +72,41 @@ class CNN_Decoder(nn.Module):
 
         self.deconv = nn.Sequential(
             # output is Z, going into a convolution
-            nn.ConvTranspose2d(self.fc_output_size, self.channel_mult*4,
+            nn.ConvTranspose2d(self.fc_output_size, self.channel_mult*16,
                                 4, 1, 0, bias=False),
+            nn.BatchNorm2d(self.channel_mult*16),
+            nn.ReLU(True),
+            # state size. self.channel_mult*16 x 4 x 4
+            nn.ConvTranspose2d(self.channel_mult*16, self.channel_mult*8,
+                                4, 2, 1, bias=False),
+            nn.BatchNorm2d(self.channel_mult*8),
+            nn.ReLU(True),
+            # state size. self.channel_mult*8 x 8 x 8
+            nn.ConvTranspose2d(self.channel_mult*8, self.channel_mult*4,
+                                4, 2, 1, bias=False),
             nn.BatchNorm2d(self.channel_mult*4),
             nn.ReLU(True),
-            # state size. self.channel_mult*32 x 4 x 4
-            nn.ConvTranspose2d(self.channel_mult*4, self.channel_mult*2,
-                                3, 2, 1, bias=False),
+            # state size. self.channel_mult*4 x 16 x 16
+            nn.ConvTranspose2d(self.channel_mult*4, self.channel_mult*2, 
+                                5, 3, 1, bias=False),
             nn.BatchNorm2d(self.channel_mult*2),
             nn.ReLU(True),
-            # state size. self.channel_mult*16 x 7 x 7
-            nn.ConvTranspose2d(self.channel_mult*2, self.channel_mult*1,
-                                4, 2, 1, bias=False),
+            # state size. self.channel_mult*2 x 48 x 48
+            nn.ConvTranspose2d(self.channel_mult*2, self.channel_mult*1, 
+                                5, 5, 0, bias=False),
             nn.BatchNorm2d(self.channel_mult*1),
             nn.ReLU(True),
-            # state size. self.channel_mult*8 x 14 x 14
-            nn.ConvTranspose2d(self.channel_mult*1, self.output_channels, 4, 2, 1, bias=False),
+            # state size. self.channel_mult*1 x 240 x 240
+            nn.ConvTranspose2d(self.channel_mult*1, self.output_channels, 
+                                3, 1, 1, bias=False),
+            nn.BatchNorm2d(self.output_channels),
+            nn.ReLU(True),
+            # goal state size: 3 x 240 x 240
             nn.Sigmoid()
-            # state size. self.output_channels x 28 x 28
         )
 
     def forward(self, x):
         x = self.fc(x)
-        x = x.view(-1, self.fc_output_dim, 1, 1)
+        x = x.view(-1, self.fc_output_size, 1, 1)
         x = self.deconv(x)
-        return x.view(-1, self.output_width*self.output_height)
+        return x.view(-1, self.output_channels*self.output_width*self.output_height)
